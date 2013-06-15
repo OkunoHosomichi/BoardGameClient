@@ -1,0 +1,3 @@
+[patterns]
+**.java = NATIVE
+**.xml = NATIVE
