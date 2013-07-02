@@ -1,6 +1,8 @@
 package gmi.boardgame.client;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -9,14 +11,15 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.DelimiterBasedFrameDecoder;
-import io.netty.handler.codec.Delimiters;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
 
 public class ClientApp {
+  private static final Charset CHARSET = Charset.forName("UTF-16BE");
   private final String host;
   private final int port;
 
@@ -26,19 +29,21 @@ public class ClientApp {
   }
 
   public void run() throws Exception {
-    EventLoopGroup group = new NioEventLoopGroup();
+    final EventLoopGroup group = new NioEventLoopGroup();
     try {
-      Bootstrap b = new Bootstrap();
+      final Bootstrap b = new Bootstrap();
       b.group(group).channel(NioSocketChannel.class).handler(new ChannelInitializer<Channel>() {
 
         @Override
         protected void initChannel(Channel ch) throws Exception {
-          ChannelPipeline pipeline = ch.pipeline();
+          final ChannelPipeline pipeline = ch.pipeline();
 
           // Add the text line codec combination first,
-          pipeline.addLast("framer", new DelimiterBasedFrameDecoder(8192, Delimiters.lineDelimiter()));
-          pipeline.addLast("decoder", new StringDecoder());
-          pipeline.addLast("encoder", new StringEncoder());
+          pipeline.addLast("framer",
+              new DelimiterBasedFrameDecoder(8192, new ByteBuf[] { Unpooled.wrappedBuffer("\r\n".getBytes(CHARSET)),
+                  Unpooled.wrappedBuffer("\n".getBytes(CHARSET)) }));
+          pipeline.addLast("decoder", new StringDecoder(CHARSET));
+          pipeline.addLast("encoder", new StringEncoder(CHARSET));
 
           // and then business logic.
           pipeline.addLast("handler", new ClientHandler());
@@ -46,19 +51,19 @@ public class ClientApp {
       });
 
       // Start the connection attempt.
-      Channel ch = b.connect(host, port).sync().channel();
+      final Channel ch = b.connect(host, port).sync().channel();
 
       // Read commands from the stdin.
       ChannelFuture lastWriteFuture = null;
-      BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+      final BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
       for (;;) {
-        String line = in.readLine();
+        final String line = in.readLine();
         if (line == null) {
           break;
         }
 
         // Sends the received line to the server.
-        lastWriteFuture = ch.write(line + "\r\n");
+        lastWriteFuture = ch.write(line + "\n");
 
         // If user typed the 'bye' command, wait until the server closes
         // the connection.
@@ -87,7 +92,7 @@ public class ClientApp {
       port = Integer.parseInt(args[1]);
     } else {
       host = "localhost";
-      port = 8443;
+      port = 60935;
     }
 
     new ClientApp(host, port).run();
